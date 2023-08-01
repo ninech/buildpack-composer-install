@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -19,13 +20,19 @@ import (
 	"github.com/paketo-buildpacks/packit/v2/scribe"
 )
 
+const (
+	runComposerInstallOnCacheEnv = "BP_RUN_COMPOSER_INSTALL"
+)
+
 // DetermineComposerInstallOptions defines the interface to get options for `composer install`
+//
 //go:generate faux --interface DetermineComposerInstallOptions --output fakes/determine_composer_install_options.go
 type DetermineComposerInstallOptions interface {
 	Determine() []string
 }
 
 // Executable just provides a fake for pexec.Executable for testing
+//
 //go:generate faux --interface Executable --output fakes/executable.go
 type Executable interface {
 	Execute(pexec.Execution) (err error)
@@ -38,6 +45,7 @@ type SBOMGenerator interface {
 
 // Calculator defines the interface for calculating a checksum of the given set
 // of file paths.
+//
 //go:generate faux --interface Calculator --output fakes/calculator.go
 type Calculator interface {
 	Sum(paths ...string) (string, error)
@@ -266,6 +274,45 @@ func runComposerInstall(
 			}
 			for _, f := range files {
 				logger.Debug.Subprocess(fmt.Sprintf("- %s", f.Name()))
+			}
+		}
+		// we run "composer install" again on the cached content as
+		// sometimes composer modules install certain things to special
+		// directories other than the "vendor" directory.  See:
+		// https://getcomposer.org/doc/faqs/how-do-i-install-a-package-to-a-custom-path-for-my-framework.md
+		// for more information. This can be switched off by setting
+		// the environment variable "BP_RUN_COMPOSER_INSTALL" to false.
+		runComposerInstallOnCache := true
+		runComposerInstallStr, found := os.LookupEnv(runComposerInstallOnCacheEnv)
+		if found {
+			var err error
+			if runComposerInstallOnCache, err = strconv.ParseBool(runComposerInstallStr); err != nil {
+				return packit.Layer{}, fmt.Errorf("error when parsing env var %q: %w", runComposerInstallOnCacheEnv, err)
+			}
+		}
+
+		if runComposerInstallOnCache {
+			installArgs := append([]string{"install"}, composerInstallOptions.Determine()...)
+			logger.Process("Running 'composer %s' from cached files", strings.Join(installArgs, " "))
+
+			// install packages into /workspace/vendor because composer cannot handle symlinks easily
+			execution := pexec.Execution{
+				Args: installArgs,
+				Dir:  context.WorkingDir,
+				Env: append(os.Environ(),
+					"COMPOSER_NO_INTERACTION=1", // https://getcomposer.org/doc/03-cli.md#composer-no-interaction
+					fmt.Sprintf("COMPOSER=%s", composerJsonPath),
+					fmt.Sprintf("COMPOSER_HOME=%s", filepath.Join(composerPackagesLayer.Path, ".composer")),
+					fmt.Sprintf("COMPOSER_VENDOR_DIR=%s", workspaceVendorDir),
+					fmt.Sprintf("PHPRC=%s", composerPhpIniPath),
+					fmt.Sprintf("PATH=%s", path),
+				),
+				Stdout: logger.ActionWriter,
+				Stderr: logger.ActionWriter,
+			}
+			err = composerInstallExec.Execute(execution)
+			if err != nil {
+				return packit.Layer{}, err
 			}
 		}
 
