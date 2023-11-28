@@ -120,8 +120,8 @@ func testFrameworkApps(t *testing.T, context spec.G, it spec.S) {
 
 		context("building a drupal app", func() {
 			var (
-				err  error
-				logs fmt.Stringer
+				err         error
+				logs        fmt.Stringer
 				secondImage occam.Image
 			)
 
@@ -150,7 +150,6 @@ func testFrameworkApps(t *testing.T, context spec.G, it spec.S) {
 						"BP_PHP_SERVER":  "nginx",
 						"BP_PHP_WEB_DIR": "web",
 						"BP_LOG_LEVEL":   "DEBUG",
-						"BP_RUN_COMPOSER_INSTALL": "1",
 					}).
 					Execute(name, source)
 
