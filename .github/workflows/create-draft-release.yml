@@ -171,7 +171,7 @@ jobs:
       uses: paketo-buildpacks/github-config/actions/release/notes@main
       with:
         repo: ${{ github.repository }}
-        token: ${{ secrets.PAKETO_BOT_GITHUB_TOKEN }}
+        token: ${{ secrets.NINE_BOT_GITHUB_TOKEN }}
         buildpack_type: ${{ steps.get_buildpack_type.outputs.buildpack_type }}
         buildpackage_path: ${{ steps.get_buildpack_path.outputs.path }}
 
@@ -249,32 +249,10 @@ jobs:
       uses: paketo-buildpacks/github-config/actions/release/create@main
       with:
         repo: ${{ github.repository }}
-        token: ${{ secrets.PAKETO_BOT_GITHUB_TOKEN }}
+        token: ${{ secrets.NINE_BOT_GITHUB_TOKEN }}
         tag_name: v${{ steps.tag.outputs.tag }}
         target_commitish: ${{ github.sha }}
         name: v${{ steps.tag.outputs.tag }}
         body_filepath: "./release_notes"
         draft: true
         assets: ${{ steps.create_release_assets.outputs.release_assets }}
-
-  failure:
-    name: Alert on Failure
-    runs-on: ubuntu-24.04
-    needs: [ unit, integration, release ]
-    if: ${{ always() && needs.unit.result == 'failure' || needs.integration.result == 'failure' || needs.release.result == 'failure' }}
-    permissions:
-      contents: read
-      issues: write
-    steps:
-    - name: File Failure Alert Issue
-      uses: paketo-buildpacks/github-config/actions/issue/file@main
-      with:
-        token: ${{ secrets.GITHUB_TOKEN }}
-        repo: ${{ github.repository }}
-        label: "failure:release"
-        comment_if_exists: true
-        issue_title: "Failure: Create Draft Release workflow"
-        issue_body: |
-          Create Draft Release workflow [failed](https://github.com/${{github.repository}}/actions/runs/${{github.run_id}}).
-        comment_body: |
-           Another failure occurred: https://github.com/${{github.repository}}/actions/runs/${{github.run_id}}

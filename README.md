@@ -130,9 +130,9 @@ BP_COMPOSER_INSTALL_GLOBAL="friendsofphp/php-cs-fixer squizlabs/php_codesniffer=
 
 By default `composer install` will be run, even if a cached version of a
 previous execution was found. This needs to be done, as some composer packages
-might install files to a different directory [than the vendor
+might install files to a different directory [than the "vendor"
 one](https://getcomposer.org/doc/faqs/how-do-i-install-a-package-to-a-custom-path-for-my-framework.md).
-As only the dependencies installed to the vendor directory are cached by this
+As only the dependencies installed to the _vendor_ directory are cached by this
 buildpack, these special paths/files would not appear in the image if a cached
 layer gets used.
 
