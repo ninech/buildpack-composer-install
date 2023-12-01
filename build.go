@@ -22,6 +22,7 @@ import (
 
 const (
 	runComposerInstallOnCacheEnv = "BP_RUN_COMPOSER_INSTALL"
+	opensslExtension             = "openssl"
 )
 
 // DetermineComposerInstallOptions defines the interface to get options for `composer install`
@@ -448,7 +449,7 @@ func writeComposerPhpIni(logger scribe.Emitter, context packit.BuildContext) (co
 
 	phpIni := fmt.Sprintf(`[PHP]
 extension_dir = "%s"
-extension = openssl.so`, os.Getenv(PhpExtensionDir))
+extension = %s.so`, os.Getenv(PhpExtensionDir), opensslExtension)
 	logger.Debug.Subprocess("Writing php.ini contents:\n'%s'", phpIni)
 
 	return composerPhpIniPath, os.WriteFile(composerPhpIniPath, []byte(phpIni), os.ModePerm)
@@ -493,7 +494,12 @@ func runCheckPlatformReqs(logger scribe.Emitter, checkPlatformReqsExec Executabl
 		}
 	}
 
-	var extensions []string
+	// we always include the openssl extension as it will not be found
+	// otherwise. The reason for this is that `writeComposerPhpIni` gets
+	// executed first and already includes the openssl extension. `composer
+	// check-platform-reqs` will therefore not output a missing openssl
+	// extension (as it was already loaded).
+	var extensions = []string{opensslExtension}
 	for _, line := range strings.Split(buffer.String(), "\n") {
 		chunks := strings.Split(strings.TrimSpace(line), " ")
 		extensionName := strings.TrimPrefix(strings.TrimSpace(chunks[0]), "ext-")
