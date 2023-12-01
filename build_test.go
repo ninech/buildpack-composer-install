@@ -571,7 +571,8 @@ composer-lock-sha = "sha-from-composer-lock"
 			contents, err := os.ReadFile(filepath.Join(workingDir, ".php.ini.d", "composer-extensions.ini"))
 			Expect(err).NotTo(HaveOccurred())
 
-			Expect(string(contents)).To(Equal(`extension = hello.so
+			Expect(string(contents)).To(Equal(`extension = openssl.so
+extension = hello.so
 extension = bar.so
 `))
 		})
@@ -610,7 +611,7 @@ extension = bar.so
 			Expect(output).To(ContainSubstring(fmt.Sprintf("Listing files in %s:", filepath.Join(layersDir, composer.ComposerPackagesLayerName, "vendor"))))
 			Expect(output).To(ContainSubstring(" Generating SBOM"))
 			Expect(output).To(ContainSubstring("Running 'composer check-platform-reqs'"))
-			Expect(output).To(ContainSubstring("Found extensions 'hello, bar'"))
+			Expect(output).To(ContainSubstring("Found extensions 'openssl, hello, bar'"))
 		})
 	})
 
