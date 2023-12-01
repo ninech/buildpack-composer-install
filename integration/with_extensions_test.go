@@ -76,7 +76,7 @@ func testWithExtensions(t *testing.T, context spec.G, it spec.S) {
 			Expect(err).ToNot(HaveOccurred(), logs.String)
 
 			Expect(logs).To(ContainSubstring("Running 'composer check-platform-reqs'"))
-			Expect(logs).To(ContainSubstring("Found extensions 'fileinfo, gd, mysqli'"))
+			Expect(logs).To(ContainSubstring("Found extensions 'openssl, fileinfo, gd, mysqli'"))
 
 			container, err = docker.Container.Run.
 				WithEnv(map[string]string{"PORT": "8765"}).
@@ -87,6 +87,7 @@ func testWithExtensions(t *testing.T, context spec.G, it spec.S) {
 			// Note that `mbstring` is not included, since it is not available in `php-dist` for unknown reasons
 			extensionsMatcher := And(
 				ContainSubstring("zip"),
+				ContainSubstring("openssl"),
 				ContainSubstring("gd"),
 				ContainSubstring("fileinfo"),
 				ContainSubstring("mysqli"),
