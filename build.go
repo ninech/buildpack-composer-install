@@ -89,6 +89,11 @@ func Build(
 			workspaceVendorDir = filepath.Join(context.WorkingDir, value)
 		}
 
+		err = runCheckAndEnablePlatformReqs(logger, checkPlatformReqsExec, context.WorkingDir, composerPhpIniPath, path)
+		if err != nil {
+			return packit.BuildResult{}, err
+		}
+
 		var composerPackagesLayer packit.Layer
 		logger.Process("Executing build process")
 		duration, err := clock.Measure(func() error {
@@ -126,11 +131,6 @@ func Build(
 		logger.FormattingSBOM(context.BuildpackInfo.SBOMFormats...)
 
 		composerPackagesLayer.SBOM, err = sbomContent.InFormats(context.BuildpackInfo.SBOMFormats...)
-		if err != nil {
-			return packit.BuildResult{}, err
-		}
-
-		err = runCheckPlatformReqs(logger, checkPlatformReqsExec, context.WorkingDir, composerPhpIniPath, path)
 		if err != nil {
 			return packit.BuildResult{}, err
 		}
@@ -455,7 +455,7 @@ extension = %s.so`, os.Getenv(PhpExtensionDir), opensslExtension)
 	return composerPhpIniPath, os.WriteFile(composerPhpIniPath, []byte(phpIni), os.ModePerm)
 }
 
-// runCheckPlatformReqs will run Composer command `check-platform-reqs`
+// runCheckAndEnablePlatformReqs will run Composer command `check-platform-reqs`
 // to see which platform requirements are "missing".
 // https://getcomposer.org/doc/03-cli.md#check-platform-reqs
 //
@@ -469,7 +469,7 @@ extension = %s.so`, os.Getenv(PhpExtensionDir), opensslExtension)
 // https://github.com/paketo-buildpacks/php-composer/blob/5e2604b74cbeb30090bf7eadb1cfc158b374efc0/composer/composer.go#L76-L100
 //
 // In case you are curious about exit code 2: https://getcomposer.org/doc/03-cli.md#process-exit-codes
-func runCheckPlatformReqs(logger scribe.Emitter, checkPlatformReqsExec Executable, workingDir, composerPhpIniPath, path string) error {
+func runCheckAndEnablePlatformReqs(logger scribe.Emitter, checkPlatformReqsExec Executable, workingDir, composerPhpIniPath, path string) error {
 
 	args := []string{"check-platform-reqs"}
 	logger.Process("Running 'composer %s'", strings.Join(args, " "))
@@ -514,7 +514,7 @@ func runCheckPlatformReqs(logger scribe.Emitter, checkPlatformReqsExec Executabl
 	buf := bytes.Buffer{}
 
 	for _, extension := range extensions {
-		buf.WriteString(fmt.Sprintf("extension = %s.so\n", extension))
+		_, _ = fmt.Fprintf(&buf, "extension = %s.so\n", extension)
 	}
 
 	iniDir := filepath.Join(workingDir, ".php.ini.d")

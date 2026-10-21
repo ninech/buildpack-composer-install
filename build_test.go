@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"testing"
 
 	. "github.com/onsi/gomega"
@@ -29,11 +30,11 @@ func testBuild(t *testing.T, context spec.G, it spec.S) {
 		composerConfigExecutable                *fakes.Executable
 		composerInstallExecutable               *fakes.Executable
 		composerGlobalExecutable                *fakes.Executable
-		composerCheckPlatformReqsExecExecutable *fakes.Executable
+		composerCheckAndEnablePlatformReqsExecExecutable *fakes.Executable
 		composerConfigExecution                 pexec.Execution
 		composerInstallExecution                pexec.Execution
 		composerGlobalExecution                 pexec.Execution
-		composerCheckPlatformReqsExecExecution  pexec.Execution
+		composerCheckAndEnablePlatformReqsExecExecution  pexec.Execution
 		sbomGenerator                           *fakes.SBOMGenerator
 		calculator                              *fakes.Calculator
 
@@ -59,7 +60,7 @@ func testBuild(t *testing.T, context spec.G, it spec.S) {
 		composerConfigExecutable = &fakes.Executable{}
 		composerInstallExecutable = &fakes.Executable{}
 		composerGlobalExecutable = &fakes.Executable{}
-		composerCheckPlatformReqsExecExecutable = &fakes.Executable{}
+		composerCheckAndEnablePlatformReqsExecExecutable = &fakes.Executable{}
 
 		composerConfigExecutable.ExecuteCall.Stub = func(temp pexec.Execution) error {
 			Expect(fmt.Fprint(temp.Stdout, "stdout from composer config\n")).To(Equal(28))
@@ -84,8 +85,8 @@ func testBuild(t *testing.T, context spec.G, it spec.S) {
 			return nil
 		}
 
-		composerCheckPlatformReqsExecExecutable.ExecuteCall.Stub = func(temp pexec.Execution) error {
-			composerCheckPlatformReqsExecExecution = temp
+		composerCheckAndEnablePlatformReqsExecExecutable.ExecuteCall.Stub = func(temp pexec.Execution) error {
+			composerCheckAndEnablePlatformReqsExecExecution = temp
 
 			_, err := temp.Stdout.Write([]byte(`ext-hello  8.1.4    missing
 ext-foo   8.1.4    success
@@ -117,7 +118,7 @@ php       8.1.4    success
 			composerConfigExecutable,
 			composerInstallExecutable,
 			composerGlobalExecutable,
-			composerCheckPlatformReqsExecExecutable,
+			composerCheckAndEnablePlatformReqsExecExecutable,
 			sbomGenerator,
 			"fake-path-from-tests",
 			calculator,
@@ -185,46 +186,63 @@ php       8.1.4    success
 			content, err := io.ReadAll(cdx.Content)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(string(content)).To(MatchJSON(`{
-			"bomFormat": "CycloneDX",
-			"components": [],
-			"metadata": {
-				"tools": [
-					{
-						"name": "syft",
-						"vendor": "anchore",
-						"version": "[not provided]"
-					}
-				]
-			},
-			"specVersion": "1.3",
-			"version": 1
-		}`))
+				"$schema": "http://cyclonedx.org/schema/bom-1.3.schema.json",
+				"bomFormat": "CycloneDX",
+				"metadata": {
+					"tools": [
+						{
+							"name": "",
+							"vendor": "anchore"
+						}
+					]
+				},
+				"specVersion": "1.3",
+				"version": 1
+			}`))
 
 			Expect(spdx.Extension).To(Equal("spdx.json"))
 			content, err = io.ReadAll(spdx.Content)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(string(content)).To(MatchJSON(`{
-			"SPDXID": "SPDXRef-DOCUMENT",
-			"creationInfo": {
-				"created": "0001-01-01T00:00:00Z",
-				"creators": [
-					"Organization: Anchore, Inc",
-					"Tool: syft-"
+
+			versionPattern := regexp.MustCompile(`"licenseListVersion": "\d+\.\d+"`)
+			contentReplaced := versionPattern.ReplaceAllString(string(content), `"licenseListVersion": "x.x"`)
+			uuidRegex := regexp.MustCompile(`[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}`)
+			contentReplaced = uuidRegex.ReplaceAllString(contentReplaced, "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx")
+
+			Expect(string(contentReplaced)).To(MatchJSON(`{
+				"SPDXID": "SPDXRef-DOCUMENT",
+				"creationInfo": {
+					"created": "0001-01-01T00:00:00Z",
+					"creators": [
+						"Organization: Anchore, Inc",
+						"Tool: -"
+					],
+					"licenseListVersion": "x.x"
+				},
+				"dataLicense": "CC0-1.0",
+				"documentNamespace": "https://paketo.io/unknown-source-type/unknown-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+				"name": "unknown",
+				"packages": [
+					{
+						"SPDXID": "SPDXRef-DocumentRoot-Unknown-",
+						"copyrightText": "NOASSERTION",
+						"downloadLocation": "NOASSERTION",
+						"filesAnalyzed": false,
+						"licenseConcluded": "NOASSERTION",
+						"licenseDeclared": "NOASSERTION",
+						"name": "",
+						"supplier": "NOASSERTION"
+					}
 				],
-				"licenseListVersion": "3.16"
-			},
-			"dataLicense": "CC0-1.0",
-			"documentNamespace": "https://paketo.io/packit/unknown-source-type/unknown-88cfa225-65e0-5755-895f-c1c8f10fde76",
-			"name": "unknown",
-			"relationships": [
-				{
-					"relatedSpdxElement": "SPDXRef-DOCUMENT",
-					"relationshipType": "DESCRIBES",
-					"spdxElementId": "SPDXRef-DOCUMENT"
-				}
-			],
-			"spdxVersion": "SPDX-2.2"
-		}`))
+				"relationships": [
+					{
+						"relatedSpdxElement": "SPDXRef-DocumentRoot-Unknown-",
+						"relationshipType": "DESCRIBES",
+						"spdxElementId": "SPDXRef-DOCUMENT"
+					}
+				],
+				"spdxVersion": "SPDX-2.2"
+			}`))
 
 			Expect(buffer.String()).To(ContainSubstring("Running 'composer install options from fake'"))
 
@@ -426,46 +444,63 @@ composer-lock-sha = "sha-from-composer-lock"
 				content, err := io.ReadAll(cdx.Content)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(string(content)).To(MatchJSON(`{
-			"bomFormat": "CycloneDX",
-			"components": [],
-			"metadata": {
-				"tools": [
-					{
-						"name": "syft",
-						"vendor": "anchore",
-						"version": "[not provided]"
-					}
-				]
-			},
-			"specVersion": "1.3",
-			"version": 1
-		}`))
+					"$schema": "http://cyclonedx.org/schema/bom-1.3.schema.json",
+					"bomFormat": "CycloneDX",
+					"metadata": {
+						"tools": [
+							{
+								"name": "",
+								"vendor": "anchore"
+							}
+						]
+					},
+					"specVersion": "1.3",
+					"version": 1
+				}`))
 
 				Expect(spdx.Extension).To(Equal("spdx.json"))
 				content, err = io.ReadAll(spdx.Content)
 				Expect(err).NotTo(HaveOccurred())
-				Expect(string(content)).To(MatchJSON(`{
-			"SPDXID": "SPDXRef-DOCUMENT",
-			"creationInfo": {
-				"created": "0001-01-01T00:00:00Z",
-				"creators": [
-					"Organization: Anchore, Inc",
-					"Tool: syft-"
-				],
-				"licenseListVersion": "3.16"
-			},
-			"dataLicense": "CC0-1.0",
-			"documentNamespace": "https://paketo.io/packit/unknown-source-type/unknown-88cfa225-65e0-5755-895f-c1c8f10fde76",
-			"name": "unknown",
-			"relationships": [
-				{
-					"relatedSpdxElement": "SPDXRef-DOCUMENT",
-					"relationshipType": "DESCRIBES",
-					"spdxElementId": "SPDXRef-DOCUMENT"
-				}
-			],
-			"spdxVersion": "SPDX-2.2"
-		}`))
+
+				versionPattern := regexp.MustCompile(`"licenseListVersion": "\d+\.\d+"`)
+				contentReplaced := versionPattern.ReplaceAllString(string(content), `"licenseListVersion": "x.x"`)
+				uuidRegex := regexp.MustCompile(`[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}`)
+				contentReplaced = uuidRegex.ReplaceAllString(contentReplaced, "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx")
+
+				Expect(string(contentReplaced)).To(MatchJSON(`{
+					"SPDXID": "SPDXRef-DOCUMENT",
+					"creationInfo": {
+						"created": "0001-01-01T00:00:00Z",
+						"creators": [
+							"Organization: Anchore, Inc",
+							"Tool: -"
+						],
+						"licenseListVersion": "x.x"
+					},
+					"dataLicense": "CC0-1.0",
+					"documentNamespace": "https://paketo.io/unknown-source-type/unknown-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+					"name": "unknown",
+					"packages": [
+						{
+							"SPDXID": "SPDXRef-DocumentRoot-Unknown-",
+							"copyrightText": "NOASSERTION",
+							"downloadLocation": "NOASSERTION",
+							"filesAnalyzed": false,
+							"licenseConcluded": "NOASSERTION",
+							"licenseDeclared": "NOASSERTION",
+							"name": "",
+							"supplier": "NOASSERTION"
+						}
+					],
+					"relationships": [
+						{
+							"relatedSpdxElement": "SPDXRef-DocumentRoot-Unknown-",
+							"relationshipType": "DESCRIBES",
+							"spdxElementId": "SPDXRef-DOCUMENT"
+						}
+					],
+					"spdxVersion": "SPDX-2.2"
+				}`))
 
 				Expect(filepath.Join(workingDir, "vendor", "file.txt")).To(BeAnExistingFile())
 			})
@@ -557,11 +592,11 @@ composer-lock-sha = "sha-from-composer-lock"
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			Expect(composerCheckPlatformReqsExecExecution.Args[0]).To(Equal("check-platform-reqs"))
-			Expect(composerCheckPlatformReqsExecExecution.Dir).To(Equal(workingDir))
-			Expect(len(composerCheckPlatformReqsExecExecution.Env)).To(Equal(len(os.Environ()) + 3))
+			Expect(composerCheckAndEnablePlatformReqsExecExecution.Args[0]).To(Equal("check-platform-reqs"))
+			Expect(composerCheckAndEnablePlatformReqsExecExecution.Dir).To(Equal(workingDir))
+			Expect(len(composerCheckAndEnablePlatformReqsExecExecution.Env)).To(Equal(len(os.Environ()) + 3))
 
-			Expect(composerCheckPlatformReqsExecExecution.Env).To(ContainElements(
+			Expect(composerCheckAndEnablePlatformReqsExecExecution.Env).To(ContainElements(
 				"COMPOSER_NO_INTERACTION=1",
 				fmt.Sprintf("PHPRC=%s", filepath.Join(layersDir, "composer-php-ini", "composer-php.ini")),
 				"PATH=fake-path-from-tests"))
@@ -644,11 +679,11 @@ extension = bar.so
 			})
 		})
 
-		context("when composerCheckPlatformReqsExecution fails", func() {
+		context("when composerCheckAndEnablePlatformReqsExecution fails", func() {
 			it.Before(func() {
-				composerCheckPlatformReqsExecExecutable.ExecuteCall.Stub = func(temp pexec.Execution) error {
-					composerCheckPlatformReqsExecExecution = temp
-					_, _ = fmt.Fprint(composerCheckPlatformReqsExecExecution.Stderr, "error message from check-platform-reqs")
+				composerCheckAndEnablePlatformReqsExecExecutable.ExecuteCall.Stub = func(temp pexec.Execution) error {
+					composerCheckAndEnablePlatformReqsExecExecution = temp
+					_, _ = fmt.Fprint(composerCheckAndEnablePlatformReqsExecExecution.Stderr, "error message from check-platform-reqs")
 					return errors.New("some error from check-platform-reqs")
 				}
 			})
